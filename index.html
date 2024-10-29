@@ -1,0 +1,90 @@
+<div>Pose Model</div>
+<button type="button" onclick="init()">Start</button>
+<div><canvas id="canvas"></canvas></div>
+<div id="label-container"></div>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+<script type="text/javascript">
+    const URL = "https://teachablemachine.withgoogle.com/models/ks6WkZQL1/";
+    let model, webcam, ctx, labelContainer, maxPredictions;
+
+    async function init() {
+        // HTTPS check to alert the user if they're not on a secure connection
+        if (location.protocol !== 'https:') {
+            alert("This application requires HTTPS to access the webcam. Please ensure you're using a secure (https) connection.");
+            return;
+        }
+
+        const modelURL = URL + "model.json";
+        const metadataURL = URL + "metadata.json";
+
+        // Load the model
+        try {
+            model = await tmPose.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+        } catch (error) {
+            console.error("Model loading failed:", error);
+            alert("Failed to load the model. Please check the URL or try again.");
+            return;
+        }
+
+        // Setup webcam
+        const width = window.innerWidth;
+        const height = window.innerHeight * 0.75;
+        const flip = true;
+
+        webcam = new tmPose.Webcam(width, height, flip);
+
+        try {
+            await webcam.setup(); // Request access to the webcam
+            await webcam.play();
+        } catch (error) {
+            console.error("Webcam setup failed:", error);
+            alert("Failed to access the webcam. Please ensure you have granted permission.");
+            return;
+        }
+
+        // Start animation loop
+        window.requestAnimationFrame(loop);
+
+        // Set up canvas and labels
+        const canvas = document.getElementById("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        ctx = canvas.getContext("2d");
+
+        labelContainer = document.getElementById("label-container");
+        for (let i = 0; i < maxPredictions; i++) {
+            labelContainer.appendChild(document.createElement("div"));
+        }
+    }
+
+    async function loop(timestamp) {
+        webcam.update();
+        await predict();
+        window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+        const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+        const prediction = await model.predict(posenetOutput);
+
+        for (let i = 0; i < maxPredictions; i++) {
+            const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+            labelContainer.childNodes[i].innerHTML = classPrediction;
+        }
+
+        drawPose(pose);
+    }
+
+    function drawPose(pose) {
+        if (webcam.canvas) {
+            ctx.drawImage(webcam.canvas, 0, 0);
+            if (pose) {
+                const minPartConfidence = 0.5;
+                tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+                tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+            }
+        }
+    }
+</script>
